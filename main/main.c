@@ -22,9 +22,7 @@ void set_p2_state(int, int);
 void toggle_p2(int);
 int get_p2_state(int);
 
-void configRFid();
 int checkShock();
-int checkRFid();
 void configShock();
 
 char c;
@@ -81,22 +79,21 @@ int main(void)
 
    configShock(); // set up shock sensor GPIOs
 
-   configRFid(); // set up RFid - init phase, charge phase
-
    ADC10CTL0 |= ENC + ADC10SC;         // Sampling and conversion start
 
    __enable_interrupt();           // Enable interrupts.
 
+   set_p1_dir(6, 1);
+   set_p1_dir(7, 0);
    int to_send = 0;
    int shock_delay = 0;
    while(1){
-
-       //check rfid if car is started
-       if(car_on && !rfid_auth){
-           __disable_interrupt(); //disable uart and adc interrupts in order to have correct timing with TMS3705
-           rfid_auth = checkRFid();
-           __enable_interrupt();
+       if(get_p1_state(7)){ //check rfid status from arduino nano
+           set_p1_state(6, 1);
+       }else{
+           set_p1_state(6, 0);
        }
+
 
        //check shock sensor for 10 seconds
        while(shock_delay < 1000){
@@ -167,86 +164,6 @@ void configShock(){
     P1OUT &= ~BIT4;
 }
 
-void configRFid(){
-    set_p1_dir(5,0); //read SCIO
-
-    set_p1_dir(6,1); //write TXCT
-
-    set_p1_state(6,1); //start with high TXCT
-
-    //init phase
-    for (j=0;j<2200;j++){        // TXCT high for ~2.2ms
-    __no_operation();           // TXCT high for ~2.2ms
-    }
-
-    set_p1_state(6,0); //charge phase with default mode control register
-    //wait 2s for charge phase
-    for (j=0;j<200;j++){        // TXCT low for ~2s
-      __delay_cycles(10000);
-    }
-
-
-}
-
-int checkRFid(){
-    set_p1_state(6,0); //charge phase with default mode control register
-    //wait 2s for charge phase
-     for (j=0;j<200;j++){        // TXCT low for ~2s
-         __delay_cycles(10000);
-     }
-
-
-    set_p1_state(6,1); //start reading phase
-
-    //check for SCIO high, first bit is always high
-    for (j=0;j<20000;j++){        // TXCT high for ~20ms
-          if(get_p2_state(2)){
-              read_phase = 1;
-              break;
-          }
-     }
-
-     while(read_phase){
-
-         //repeat reading for one byte until end byte
-         for (j=0; j<8; j++) // one byte
-         {
-             //NRZ bit duration on SCIO Asynchronous mode 64us
-
-             if (get_p2_state(5)){  // SCIO high
-                 byte = byte | shift; // set current bit
-             }
-             shift = shift << 1; // shift to next bit
-             int t = 0;
-             for (t=0;t<64;t++){            // TXCT high for ~64us
-               __no_operation();           // TXCT high for ~64us
-
-             }
-         }
-         arr[byte_pos] = byte;
-         byte_pos++;
-         for (j=0;j<3000;j++){ //wait for ~3ms for SCIO start bit
-              if(get_p2_state(5)){ //check if there is input on SCIO
-                  read_phase = 1; //read_phase reading next byte
-                  break;
-              }else{
-                  arr[byte_pos] = '\0';
-                  read_phase = 0; //stop read_phase
-              }
-          }
-     }
-
-     int auth = 1;
-     //check bytes to see if authorization is correct
-     for(j = 0; j < byte_pos; j++){
-         if(arr[j] != 1){
-             auth = 0;
-             break;
-         }
-     }
-
-     return auth;
-}
 
 int checkShock(){
 
